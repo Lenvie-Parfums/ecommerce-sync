@@ -242,6 +242,18 @@ def _sync_site():
         if len(row) > COL_NUM_SITE:
             ja_tem.add(str(row[COL_NUM_SITE]).strip())
 
+    # Mapeia as datas da Base TPL para cruzar com os Pedidos Site (sem chamar API de novo)
+    dados_tpl = sheets.ler_aba("Base TPL")
+    mapa_tpl = {}
+    for row in dados_tpl[1:]:
+        if len(row) > 4: # COL_PEDIDO = 4
+            num = str(row[4]).strip()
+            mapa_tpl[num] = {
+                "prev":    str(row[24]) if len(row) > 24 else "",
+                "ajust":   str(row[25]) if len(row) > 25 else "",
+                "entrega": str(row[47]) if len(row) > 47 else ""
+            }
+
     pedidos = omie.listar_pedidos("30/07/2026")
     hoje    = datetime.now(TZ_SP)
     novas   = []
@@ -263,13 +275,18 @@ def _sync_site():
             except Exception:
                 pass
 
+        # Pega as datas da Base TPL mapeada acima
+        tpl_info = mapa_tpl.get(code, {})
+
         novas.append([
             ped["data"], code, ped["nf"],
             vd["cidade"], vd["estado"], vd["receita"],
             vd["transp"] or ped["transp"],
             dias, "NÃO",
             "INTEGRADO WMS" if ped["rastreio"] else "",
-            "", "", "",
+            tpl_info.get("prev", ""),
+            tpl_info.get("ajust", ""),
+            tpl_info.get("entrega", ""),
             ped["rastreio"]
         ])
         time.sleep(0.3)

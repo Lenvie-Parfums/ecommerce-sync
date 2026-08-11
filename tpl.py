@@ -167,18 +167,18 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
             pass
 
     return [
-        str(id_tpl), "NORMAL", "OMIE", "",
+        str(id_tpl), "NORMAL", "OMIE", inv.get("nature", ""), # NATUREZA_DE_OPERACAO
         str(order_num or inf.get("number", "")),
-        "NAO", "0", "",
+        "NAO", "0", inf.get("priority", ""), # PRIORIDADE
         inv.get("number", ""),   inv.get("value", ""),
         inv.get("series", ""),   inv.get("key", ""),
         inv.get("emission", ""),
         sh.get("nick", ""),      sh.get("method", ""),
         sh.get("vol", ""),       wms.get("weight", ""),
-        sh.get("vol", ""),       "", "",
+        wms.get("vol", ""),      inf.get("channel", ""), inf.get("marketplace", ""), # VOL.OP, CANAL VENDA, MKP NOME
         sh.get("trackerUrl") or sh.get("trackerurl", ""),
         sh.get("tracker", ""),
-        "", inf.get("iderp", ""),
+        sh.get("route", ""), inf.get("iderp", ""), # CODIGO DE ROTA, ID-MKP
         inf.get("date", ""),     inf.get("prediction", ""),
         status_texto(o.get("code")),
         ult.get("message", ""),
@@ -188,7 +188,8 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         dest.get("mail") or dest.get("email", ""),
         dest.get("phone") or dest.get("telephone", ""),
         dest.get("zipcode") or dest.get("cep", ""),
-        dest.get("state") or dest.get("uf", ""), "", "",
+        dest.get("state") or dest.get("uf", ""), 
+        dest.get("region", ""), dest.get("macroRegion", ""), # REGIAO, GRANDE REGIAO
         ev.get("created", ""),       ev.get("os", ""),
         ev.get("invoice", ""),       ev.get("startPicking", ""),
         ev.get("startCheckout", ""), ev.get("dispatched", ""),
@@ -196,5 +197,5 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         dias_ult,
         ult.get("dtshipping", ""),
         ev.get("delivered", ""),     ev.get("cancelled", ""),
-        ""
+        ev.get("user", "") # POR_QUEM
     ]
