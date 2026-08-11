@@ -19,40 +19,40 @@ _auth_cache_ts = 0
 STATUS_FINAIS = {"ENTREGUE", "CANCELADO", "DEVOLVIDO", "EXTRAVIADO", "RECUSADO"}
 
 STATUS_MAP = {
-    1:   "PEDIDO RECEBIDO",
-    3:   "AGUARDANDO WMS",
-    5:   "AGUARDANDO PICKING",
-    8:   "AGUARDANDO NOTA",
-    9:   "LIBERADO PARA CORTE",
-    10:  "PICKING DIGITAL REALIZADO",
-    13:  "CANCELADO",
-    20:  "CHECKOUT",
-    25:  "NOTA RECEBIDA",
-    28:  "RASTREADOR RECEBIDO",
-    30:  "PEDIDO SEPARADO",
-    50:  "DESPACHADO",
-    60:  "COLETADO",
-    70:  "EM TRANSITO",
-    75:  "SAIU PARA ENTREGA",
-    80:  "OCORRÊNCIA",
-    90:  "ENTREGUE",
-    100: "FALHA NA ENTREGA",
-    110: "RECUSADO",
-    200: "CANCELADO",
-    300: "DEVOLVIDO",
-    400: "EXTRAVIADO",
-    411: "ROUBO DE CARGA",
-    500: "REDESPACHO",
-    510: "REGISTROS TRANSPORTADORA",
-    1002:"SERIAIS DEFINIDOS",
-    1010:"ENDERECO INCORRETO",
-    1020:"DESTINATARIO AUSENTE",
-    1040:"AGUARDANDO RETIRADA",
-    1100:"NAO PROCURADO",
-    1150:"VOLUME PREPARADO",
-    1199:"AGUARDANDO CTE",
-    1200:"CTE GERADO",
-    9999:"EM TRATATIVA",
+    1:    "PEDIDO RECEBIDO",
+    3:    "AGUARDANDO WMS",
+    5:    "AGUARDANDO PICKING",
+    8:    "AGUARDANDO NOTA",
+    9:    "LIBERADO PARA CORTE",
+    10:   "PICKING DIGITAL REALIZADO",
+    13:   "CANCELADO",
+    20:   "CHECKOUT",
+    25:   "NOTA RECEBIDA",
+    28:   "RASTREADOR RECEBIDO",
+    30:   "PEDIDO SEPARADO",
+    50:   "DESPACHADO",
+    60:   "COLETADO",
+    70:   "EM TRANSITO",
+    75:   "SAIU PARA ENTREGA",
+    80:   "OCORRÊNCIA",
+    90:   "ENTREGUE",
+    100:  "FALHA NA ENTREGA",
+    110:  "RECUSADO",
+    200:  "CANCELADO",
+    300:  "DEVOLVIDO",
+    400:  "EXTRAVIADO",
+    411:  "ROUBO DE CARGA",
+    500:  "REDESPACHO",
+    510:  "REGISTROS TRANSPORTADORA",
+    1002: "SERIAIS DEFINIDOS",
+    1010: "ENDERECO INCORRETO",
+    1020: "DESTINATARIO AUSENTE",
+    1040: "AGUARDANDO RETIRADA",
+    1100: "NAO PROCURADO",
+    1150: "VOLUME PREPARADO",
+    1199: "AGUARDANDO CTE",
+    1200: "CTE GERADO",
+    9999: "EM TRATATIVA",
     10002:"AVARIA",
     10003:"AVISO COLETA",
     10004:"PARADO POSTO FISCAL",
@@ -120,6 +120,18 @@ def detalhe_pedido(id_tpl: int, auth: str) -> dict | None:
     return data["order"]
 
 def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
+    """
+    Monta linha para a Base TPL — 48 colunas alinhadas ao CAB_TPL:
+    ID, TIPO, INTEGRACAO, NATUREZA_DE_OPERACAO, PEDIDO, ANEXO, OS, PRIORIDADE,
+    NF, VALOR_NOTA, SERIE, CHAVE, NF_EMISSAO, TRANSPORTADORA, MODALIDADE,
+    VOL.NF, PESO(G), VOL.OP, CANAL VENDA, MKP NOME, URL, SRO,
+    CODIGO DE ROTA, ID-MKP, PREVISAO ORIGINAL, PREVISAO AJUSTADA,
+    SITUACAO, DETALHE, TEM_OCORRENCIA, ULTIMA_OCORRENCIA_NO_PEDIDO,
+    DEST_NOME, DEST_EMAIL, DEST_FONE, DEST_CEP, UF, REGIAO, GRANDE REGIAO,
+    DH/INC, DH/WMS, DH/NOTA, DH/PICKING, DH/CHECKOUT, DH/DESPACHADO,
+    DH/COLETA, DH/FALHA, DIAS_ULTIMA_MOVIMENTACAO, DH/ULTIMA_MOVIMENTACAO,
+    DH/ENTREGA
+    """
     o = detalhe_pedido(id_tpl, auth)
     if not o:
         return None
@@ -166,36 +178,54 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         except Exception:
             pass
 
+    # Monta lista de exatamente 48 itens — 1 por coluna do CAB_TPL
     return [
-        str(id_tpl), "NORMAL", "OMIE", inv.get("nature", ""), # NATUREZA_DE_OPERACAO
-        str(order_num or inf.get("number", "")),
-        "NAO", "0", inf.get("priority", ""), # PRIORIDADE
-        inv.get("number", ""),   inv.get("value", ""),
-        inv.get("series", ""),   inv.get("key", ""),
-        inv.get("emission", ""),
-        sh.get("nick", ""),      sh.get("method", ""),
-        sh.get("vol", ""),       wms.get("weight", ""),
-        wms.get("vol", ""),      inf.get("channel", ""), inf.get("marketplace", ""), # VOL.OP, CANAL VENDA, MKP NOME
-        sh.get("trackerUrl") or sh.get("trackerurl", ""),
-        sh.get("tracker", ""),
-        sh.get("route", ""), inf.get("iderp", ""), # CODIGO DE ROTA, ID-MKP
-        inf.get("date", ""),     inf.get("prediction", ""),
-        status_texto(o.get("code")),
-        ult.get("message", ""),
-        "SIM" if evs else "NAO",
-        f"{ult.get('dtshipping', '')} - {ult.get('message', '')}" if ult.get("dtshipping") else "",
-        dest.get("to") or dest.get("name") or dest.get("recipient", ""),
-        dest.get("mail") or dest.get("email", ""),
-        dest.get("phone") or dest.get("telephone", ""),
-        dest.get("zipcode") or dest.get("cep", ""),
-        dest.get("state") or dest.get("uf", ""), 
-        dest.get("region", ""), dest.get("macroRegion", ""), # REGIAO, GRANDE REGIAO
-        ev.get("created", ""),       ev.get("os", ""),
-        ev.get("invoice", ""),       ev.get("startPicking", ""),
-        ev.get("startCheckout", ""), ev.get("dispatched", ""),
-        ev.get("in_transit", ""),    ev.get("fail", ""),
-        dias_ult,
-        ult.get("dtshipping", ""),
-        ev.get("delivered", ""),     ev.get("cancelled", ""),
-        ev.get("user", "") # POR_QUEM
+        str(id_tpl),                                          # 0  ID
+        "NORMAL",                                             # 1  TIPO
+        "OMIE",                                               # 2  INTEGRACAO
+        "",                                                   # 3  NATUREZA_DE_OPERACAO (manual)
+        str(order_num or inf.get("number", "")),              # 4  PEDIDO
+        "NAO",                                                # 5  ANEXO
+        "0",                                                  # 6  OS
+        "",                                                   # 7  PRIORIDADE (manual)
+        inv.get("number", ""),                                # 8  NF
+        inv.get("value", ""),                                 # 9  VALOR_NOTA
+        inv.get("series", ""),                                # 10 SERIE
+        inv.get("key", ""),                                   # 11 CHAVE
+        inv.get("emission", ""),                              # 12 NF_EMISSAO
+        sh.get("nick", ""),                                   # 13 TRANSPORTADORA
+        sh.get("method", ""),                                 # 14 MODALIDADE
+        sh.get("vol", ""),                                    # 15 VOL.NF
+        wms.get("weight", ""),                                # 16 PESO (G)
+        "",                                                   # 17 VOL.OP (não vem na API)
+        "",                                                   # 18 CANAL VENDA (manual)
+        "",                                                   # 19 MKP NOME (manual)
+        sh.get("trackerUrl") or sh.get("trackerurl", ""),    # 20 URL
+        sh.get("tracker", ""),                                # 21 SRO
+        "",                                                   # 22 CODIGO DE ROTA (manual)
+        inf.get("iderp", ""),                                 # 23 ID-MKP
+        inf.get("date", ""),                                  # 24 PREVISAO ORIGINAL
+        inf.get("prediction", ""),                            # 25 PREVISAO AJUSTADA
+        status_texto(o.get("code")),                          # 26 SITUACAO
+        ult.get("message", ""),                               # 27 DETALHE
+        "SIM" if evs else "NAO",                              # 28 TEM_OCORRENCIA
+        f"{ult.get('dtshipping','')} - {ult.get('message','')}" if ult.get("dtshipping") else "",  # 29 ULTIMA_OCORRENCIA_NO_PEDIDO
+        dest.get("to") or dest.get("name") or dest.get("recipient", ""),  # 30 DEST_NOME
+        dest.get("mail") or dest.get("email", ""),            # 31 DEST_EMAIL
+        dest.get("phone") or dest.get("telephone", ""),       # 32 DEST_FONE
+        dest.get("zipcode") or dest.get("cep", ""),           # 33 DEST_CEP
+        dest.get("state") or dest.get("uf", ""),              # 34 UF
+        "",                                                   # 35 REGIAO (manual)
+        "",                                                   # 36 GRANDE REGIAO (manual)
+        ev.get("created", ""),                                # 37 DH/INC
+        ev.get("os", ""),                                     # 38 DH/WMS
+        ev.get("invoice", ""),                                # 39 DH/NOTA
+        ev.get("startPicking", ""),                           # 40 DH/PICKING
+        ev.get("startCheckout", ""),                          # 41 DH/CHECKOUT
+        ev.get("dispatched", ""),                             # 42 DH/DESPACHADO
+        ev.get("in_transit", ""),                             # 43 DH/COLETA
+        ev.get("fail", ""),                                   # 44 DH/FALHA
+        dias_ult,                                             # 45 DIAS_ULTIMA_MOVIMENTACAO
+        ult.get("dtshipping", ""),                            # 46 DH/ULTIMA_MOVIMENTACAO
+        ev.get("delivered", ""),                              # 47 DH/ENTREGA
     ]
