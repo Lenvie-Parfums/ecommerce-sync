@@ -1,10 +1,10 @@
 """
 main.py — FastAPI ecommerce-sync
-Endpoints:
-  GET  /health  → liveness check
-  GET  /status  → progresso atual
-  POST /sync    → dispara sincronização (protegido por token)
-  GET  /sync    → idem (pra chamar pelo browser/menu Sheets)
+GET  /health  → liveness
+GET  /status  → progresso atual
+GET  /sync    → dispara sync (retoma se interrompido)
+POST /sync    → idem
+GET  /sync?force=true → força reinício do zero
 """
 import os, logging, threading
 from fastapi import FastAPI, HTTPException, Request
@@ -19,12 +19,12 @@ import sync as sync_engine
 
 app = FastAPI(title="Ecommerce Sync — Lenvie", version="1.0.0")
 
-SYNC_TOKEN = os.getenv("SYNC_TOKEN", "")  # token de proteção do /sync
+SYNC_TOKEN = os.getenv("SYNC_TOKEN", "")
 
 
 def _verificar_token(request: Request):
     if not SYNC_TOKEN:
-        return  # sem token configurado, aceita qualquer requisição
+        return
     token = request.headers.get("x-sync-token") or request.query_params.get("token")
     if token != SYNC_TOKEN:
         raise HTTPException(status_code=401, detail="Token inválido.")
@@ -37,17 +37,7 @@ def health():
 
 @app.get("/status")
 def status():
-    s = sync_engine.state
-    return {
-        "rodando": s.rodando,
-        "etapa":   s.etapa,
-        "total":   s.total,
-        "atual":   s.atual,
-        "pct":     round((s.atual / s.total * 100), 1) if s.total else 0,
-        "erros":   s.erros,
-        "inicio":  s.inicio,
-        "fim":     s.fim,
-    }
+    return sync_engine.state.to_dict()
 
 
 @app.get("/sync")
@@ -55,19 +45,31 @@ def status():
 def disparar_sync(request: Request):
     _verificar_token(request)
 
-    if sync_engine.state.rodando:
-        return JSONResponse({"ok": False, "msg": "Já está rodando.", "status": status()})
+    force = request.query_params.get("force", "false").lower() == "true"
 
-    # Roda em thread separada pra não travar o endpoint
+    # Se já rodando e não é force, verifica se pode retomar
+    if sync_engine.state.rodando and not force:
+        return JSONResponse({
+            "ok": False,
+            "msg": "Já está rodando.",
+            "status": sync_engine.state.to_dict()
+        })
+
     def _rodar():
-        result = sync_engine.rodar_sync()
+        result = sync_engine.rodar_sync(force=force)
         log.info(f"[Sync] Resultado: {result}")
 
     t = threading.Thread(target=_rodar, daemon=True)
     t.start()
 
-    return {
-        "ok":  True,
-        "msg": "Sincronização iniciada em background.",
-        "acompanhe": "/status"
-    }
+    msg = "Sincronização iniciada do zero." if force else "Sincronização iniciada (retoma se interrompida)."
+    return {"ok": True, "msg": msg, "acompanhe": "/status"}
+
+
+@app.on_event("startup")
+def on_startup():
+    """Se o processo reiniciou no meio de um sync, retoma automaticamente."""
+    if sync_engine.state.rodando and sync_engine.state.fase not in ("", "done"):
+        log.info("[Startup] Sync interrompido detectado — retomando automaticamente...")
+        t = threading.Thread(target=sync_engine.rodar_sync, daemon=True)
+        t.start()

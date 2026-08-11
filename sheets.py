@@ -1,7 +1,7 @@
 """
 sheets.py — acesso à planilha via Google Sheets API
+Usa Service Account (JSON em env var GOOGLE_SA_JSON)
 """
-import time 
 import os, json, time, logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -26,7 +26,6 @@ def _get_service():
     return _service
 
 def _sheet_id(nome_aba: str) -> int | None:
-    """Retorna o sheetId numérico de uma aba pelo nome."""
     svc  = _get_service()
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
     for s in meta.get("sheets", []):
@@ -93,66 +92,60 @@ def append_aba(nome_aba: str, valores: list, max_retries: int = 3):
                 raise
 
 def limpar_formatacao_dados(nome_aba: str, linha_inicio: int = 2):
-    """
-    Remove formatação (fundo/cor) das linhas de dados (a partir de linha_inicio).
-    Mantém o cabeçalho intacto.
-    """
+    """Remove formatação herdada do cabeçalho nas linhas de dados."""
     svc      = _get_service()
     sheet_id = _sheet_id(nome_aba)
     if sheet_id is None:
         return
-
-    requests_body = [{
-        "repeatCell": {
-            "range": {
-                "sheetId":          sheet_id,
-                "startRowIndex":    linha_inicio - 1,  # 0-based
-                "endRowIndex":      10000,
-                "startColumnIndex": 0,
-                "endColumnIndex":   60
-            },
-            "cell": {
-                "userEnteredFormat": {
-                    "backgroundColor": {
-                        "red": 1.0, "green": 1.0, "blue": 1.0
-                    },
-                    "textFormat": {
-                        "foregroundColor": {
-                            "red": 0.0, "green": 0.0, "blue": 0.0
-                        },
-                        "bold": False
-                    }
-                }
-            },
-            "fields": "userEnteredFormat(backgroundColor,textFormat)"
-        }
-    }]
-
     try:
         svc.spreadsheets().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
-            body={"requests": requests_body}
+            body={"requests": [{
+                "repeatCell": {
+                    "range": {
+                        "sheetId":          sheet_id,
+                        "startRowIndex":    linha_inicio - 1,
+                        "endRowIndex":      10000,
+                        "startColumnIndex": 0,
+                        "endColumnIndex":   60
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                            "textFormat": {
+                                "foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0},
+                                "bold": False
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat)"
+                }
+            }]}
         ).execute()
-        log.info(f"[Sheets] Formatação de dados limpa em '{nome_aba}'.")
+        log.info(f"[Sheets] Formatação limpa em '{nome_aba}'.")
     except Exception as e:
         log.warning(f"[Sheets] Erro ao limpar formatação de '{nome_aba}': {e}")
 
 def garantir_aba(nome_aba: str, cabecalho: list):
+    """
+    Garante que a aba existe. NÃO sobrescreve cabeçalho se a aba já existe —
+    preserva cabeçalhos customizados da planilha.
+    Só grava cabeçalho em abas criadas do zero.
+    """
     svc  = _get_service()
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
     abas = [s["properties"]["title"] for s in meta.get("sheets", [])]
 
     if nome_aba not in abas:
+        # Cria aba nova e grava cabeçalho
         svc.spreadsheets().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
             body={"requests": [{"addSheet": {"properties": {"title": nome_aba}}}]}
         ).execute()
-        log.info(f"[Sheets] Aba '{nome_aba}' criada.")
-
-    atual = ler_aba(nome_aba, "A1:ZZ1")
-    if not atual or atual[0] != cabecalho:
         escrever_aba(nome_aba, [cabecalho], "A1")
-        log.info(f"[Sheets] Cabeçalho de '{nome_aba}' gravado.")
+        log.info(f"[Sheets] Aba '{nome_aba}' criada com cabeçalho.")
+    else:
+        log.info(f"[Sheets] Aba '{nome_aba}' já existe — cabeçalho preservado.")
 
-    # Garante que dados não herdam formatação do cabeçalho
+    # Limpa formatação herdada nas linhas de dados
     limpar_formatacao_dados(nome_aba, linha_inicio=2)
