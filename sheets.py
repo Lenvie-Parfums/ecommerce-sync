@@ -1,6 +1,6 @@
 """
 sheets.py — acesso à planilha via Google Sheets API
-Usa
+"""
 import time 
 import os, json, time, logging
 from google.oauth2 import service_account
