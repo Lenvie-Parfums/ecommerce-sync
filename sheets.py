@@ -25,8 +25,16 @@ def _get_service():
     _service = build("sheets", "v4", credentials=creds, cache_discovery=False)
     return _service
 
+def _sheet_id(nome_aba: str) -> int | None:
+    """Retorna o sheetId numérico de uma aba pelo nome."""
+    svc  = _get_service()
+    meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+    for s in meta.get("sheets", []):
+        if s["properties"]["title"] == nome_aba:
+            return s["properties"]["sheetId"]
+    return None
+
 def ler_aba(nome_aba: str, range_: str = None) -> list:
-    """Retorna lista de listas com os valores da aba."""
     svc = _get_service()
     range_completo = f"'{nome_aba}'!{range_}" if range_ else f"'{nome_aba}'"
     result = svc.spreadsheets().values().get(
@@ -37,7 +45,6 @@ def ler_aba(nome_aba: str, range_: str = None) -> list:
     return result.get("values", [])
 
 def limpar_aba(nome_aba: str):
-    """Limpa todo o conteúdo da aba."""
     svc = _get_service()
     svc.spreadsheets().values().clear(
         spreadsheetId=SPREADSHEET_ID,
@@ -45,7 +52,6 @@ def limpar_aba(nome_aba: str):
     ).execute()
 
 def escrever_aba(nome_aba: str, valores: list, inicio: str = "A1", max_retries: int = 3):
-    """Escreve lista de listas na aba a partir de inicio com retry."""
     if not valores:
         return
     svc = _get_service()
@@ -66,7 +72,6 @@ def escrever_aba(nome_aba: str, valores: list, inicio: str = "A1", max_retries: 
                 raise
 
 def append_aba(nome_aba: str, valores: list, max_retries: int = 3):
-    """Faz append de linhas no final da aba com retry."""
     if not valores:
         return
     svc = _get_service()
@@ -87,10 +92,53 @@ def append_aba(nome_aba: str, valores: list, max_retries: int = 3):
             else:
                 raise
 
-def garantir_aba(nome_aba: str, cabecalho: list):
-    """Garante que a aba existe e tem o cabeçalho correto."""
-    svc = _get_service()
+def limpar_formatacao_dados(nome_aba: str, linha_inicio: int = 2):
+    """
+    Remove formatação (fundo/cor) das linhas de dados (a partir de linha_inicio).
+    Mantém o cabeçalho intacto.
+    """
+    svc      = _get_service()
+    sheet_id = _sheet_id(nome_aba)
+    if sheet_id is None:
+        return
 
+    requests_body = [{
+        "repeatCell": {
+            "range": {
+                "sheetId":          sheet_id,
+                "startRowIndex":    linha_inicio - 1,  # 0-based
+                "endRowIndex":      10000,
+                "startColumnIndex": 0,
+                "endColumnIndex":   60
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": {
+                        "red": 1.0, "green": 1.0, "blue": 1.0
+                    },
+                    "textFormat": {
+                        "foregroundColor": {
+                            "red": 0.0, "green": 0.0, "blue": 0.0
+                        },
+                        "bold": False
+                    }
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,textFormat)"
+        }
+    }]
+
+    try:
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"requests": requests_body}
+        ).execute()
+        log.info(f"[Sheets] Formatação de dados limpa em '{nome_aba}'.")
+    except Exception as e:
+        log.warning(f"[Sheets] Erro ao limpar formatação de '{nome_aba}': {e}")
+
+def garantir_aba(nome_aba: str, cabecalho: list):
+    svc  = _get_service()
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
     abas = [s["properties"]["title"] for s in meta.get("sheets", [])]
 
@@ -105,3 +153,6 @@ def garantir_aba(nome_aba: str, cabecalho: list):
     if not atual or atual[0] != cabecalho:
         escrever_aba(nome_aba, [cabecalho], "A1")
         log.info(f"[Sheets] Cabeçalho de '{nome_aba}' gravado.")
+
+    # Garante que dados não herdam formatação do cabeçalho
+    limpar_formatacao_dados(nome_aba, linha_inicio=2)

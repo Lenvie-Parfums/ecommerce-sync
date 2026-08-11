@@ -1,17 +1,17 @@
 """
 tpl.py — chamadas à API TPL (oms.tpl.com.br/api)
 """
-import os, json, time, logging, requests
+import os, time, logging, requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
-BASE_URL  = os.getenv("TPL_BASE_URL", "https://oms.tpl.com.br/api")
-TPL_APIKEY= os.getenv("TPL_APIKEY")
-TPL_TOKEN = os.getenv("TPL_TOKEN")
-TPL_EMAIL = os.getenv("TPL_EMAIL")
-TZ_SP     = ZoneInfo("America/Sao_Paulo")
+BASE_URL   = os.getenv("TPL_BASE_URL", "https://oms.tpl.com.br/api")
+TPL_APIKEY = os.getenv("TPL_APIKEY")
+TPL_TOKEN  = os.getenv("TPL_TOKEN")
+TPL_EMAIL  = os.getenv("TPL_EMAIL")
+TZ_SP      = ZoneInfo("America/Sao_Paulo")
 
 _auth_cache    = None
 _auth_cache_ts = 0
@@ -19,16 +19,53 @@ _auth_cache_ts = 0
 STATUS_FINAIS = {"ENTREGUE", "CANCELADO", "DEVOLVIDO", "EXTRAVIADO", "RECUSADO"}
 
 STATUS_MAP = {
-    1:"PEDIDO RECEBIDO", 3:"AGUARDANDO WMS", 5:"AGUARDANDO PICKING",
-    8:"AGUARDANDO NOTA", 13:"CANCELADO", 20:"CHECKOUT", 25:"NOTA RECEBIDA",
-    30:"PEDIDO SEPARADO", 50:"DESPACHADO", 60:"COLETADO",
-    70:"EM TRANSITO", 75:"SAIU PARA ENTREGA", 80:"OCORRÊNCIA",
-    90:"ENTREGUE", 100:"FALHA NA ENTREGA", 110:"RECUSADO",
-    200:"CANCELADO", 300:"DEVOLVIDO", 400:"EXTRAVIADO"
+    1:   "PEDIDO RECEBIDO",
+    3:   "AGUARDANDO WMS",
+    5:   "AGUARDANDO PICKING",
+    8:   "AGUARDANDO NOTA",
+    9:   "LIBERADO PARA CORTE",
+    10:  "PICKING DIGITAL REALIZADO",
+    13:  "CANCELADO",
+    20:  "CHECKOUT",
+    25:  "NOTA RECEBIDA",
+    28:  "RASTREADOR RECEBIDO",
+    30:  "PEDIDO SEPARADO",
+    50:  "DESPACHADO",
+    60:  "COLETADO",
+    70:  "EM TRANSITO",
+    75:  "SAIU PARA ENTREGA",
+    80:  "OCORRÊNCIA",
+    90:  "ENTREGUE",
+    100: "FALHA NA ENTREGA",
+    110: "RECUSADO",
+    200: "CANCELADO",
+    300: "DEVOLVIDO",
+    400: "EXTRAVIADO",
+    411: "ROUBO DE CARGA",
+    500: "REDESPACHO",
+    510: "REGISTROS TRANSPORTADORA",
+    1002:"SERIAIS DEFINIDOS",
+    1010:"ENDERECO INCORRETO",
+    1020:"DESTINATARIO AUSENTE",
+    1040:"AGUARDANDO RETIRADA",
+    1100:"NAO PROCURADO",
+    1150:"VOLUME PREPARADO",
+    1199:"AGUARDANDO CTE",
+    1200:"CTE GERADO",
+    9999:"EM TRATATIVA",
+    10002:"AVARIA",
+    10003:"AVISO COLETA",
+    10004:"PARADO POSTO FISCAL",
+    10006:"VOLUMES AJUSTADO WMS",
+    10007:"PESO AJUSTADO WMS",
+    10008:"ERRO ENDERECO",
 }
 
 def status_texto(code):
-    return STATUS_MAP.get(int(code or 0), f"STATUS {code}")
+    try:
+        return STATUS_MAP.get(int(code or 0), f"STATUS {code}")
+    except Exception:
+        return f"STATUS {code}"
 
 def hoje_str():
     return datetime.now(TZ_SP).strftime("%-d/%-m/%Y")
@@ -68,7 +105,6 @@ def post(endpoint: str, body: dict) -> dict:
         return {"code": 0}
 
 def listar_pedidos(data_inicio: str) -> list:
-    """Retorna lista de {id, order, date} desde data_inicio."""
     auth = autenticar()
     data = post("/get/list", {"auth": auth, "begin": data_inicio, "end": hoje_str()})
     if data.get("code") != 200 or not data.get("list"):
@@ -78,14 +114,12 @@ def listar_pedidos(data_inicio: str) -> list:
     return data["list"]
 
 def detalhe_pedido(id_tpl: int, auth: str) -> dict | None:
-    """Retorna detalhe completo de um pedido."""
     data = post("/get/orderdetail", {"auth": auth, "order": {"id": id_tpl}})
     if data.get("code") != 200 or not data.get("order"):
         return None
     return data["order"]
 
 def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
-    """Monta linha completa para a aba Base TPL."""
     o = detalhe_pedido(id_tpl, auth)
     if not o:
         return None
