@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: ecommerce-sync
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      - key: SPREADSHEET_ID
+        value: 1F2f8u9B7zK78bt_8-pRVfAjD4uaHJ3y_JrMjsKCxAoo
+      - key: GOOGLE_SA_JSON
+        sync: false   # preencher manualmente no Render dashboard
+      - key: TPL_BASE_URL
+        value: https://oms.tpl.com.br/api
+      - key: TPL_APIKEY
+        sync: false
+      - key: TPL_TOKEN
+        sync: false
+      - key: TPL_EMAIL
+        sync: false
+      - key: APP_KEY_OMIE
+        value: "4531808134854"
+      - key: APP_SECRET_OMIE
+        sync: false
+      - key: VNDA_BASE_URL
+        value: https://api.vnda.com.br
+      - key: VNDA_TOKEN
+        sync: false
+      - key: VNDA_SHOP_HOST
+        value: www.lenvieparfums.com
+      - key: SYNC_TOKEN
+        sync: false
