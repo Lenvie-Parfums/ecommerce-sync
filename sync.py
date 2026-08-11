@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 DATA_INICIO   = "30/7/2026"
 TZ_SP         = ZoneInfo("America/Sao_Paulo")
-LOTE_GRAVACAO = 20  # grava na planilha a cada X pedidos
+LOTE_GRAVACAO = 50  # grava na planilha a cada X pedidos
 
 CAB_TPL = [
     "ID","TIPO","INTEGRACAO","NATUREZA_DE_OPERACAO","PEDIDO","ANEXO","OS","PRIORIDADE",

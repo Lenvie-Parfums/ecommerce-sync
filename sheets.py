@@ -1,7 +1,7 @@
 """
 sheets.py — acesso à planilha via Google Sheets API
-Usa Service Account (JSON em env var GOOGLE_SA_JSON)
-"""
+Usa
+import time 
 import os, json, time, logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
