@@ -100,7 +100,8 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         ev = ev[0] if ev else {}
     evs = o.get("shippingevents",  []) or []
     ult = evs[-1] if evs else {}
-    dest= o.get("deliveryTo",      {}) or {}
+    _dest = o.get("deliveryTo", {})
+    dest  = _dest[0] if isinstance(_dest, list) else (_dest or {})
     wms = o.get("wms",             {}) or {}
 
     dias_ult = ""
