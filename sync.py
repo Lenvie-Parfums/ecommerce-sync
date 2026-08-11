@@ -10,9 +10,9 @@ import tpl, omie, vnda, sheets
 
 log = logging.getLogger(__name__)
 
-DATA_INICIO    = "30/7/2026"
-TZ_SP          = ZoneInfo("America/Sao_Paulo")
-LOTE_GRAVACAO  = 50  # grava na planilha a cada X pedidos
+DATA_INICIO   = "30/7/2026"
+TZ_SP         = ZoneInfo("America/Sao_Paulo")
+LOTE_GRAVACAO = 20  # grava na planilha a cada X pedidos
 
 CAB_TPL = [
     "ID","TIPO","INTEGRACAO","NATUREZA_DE_OPERACAO","PEDIDO","ANEXO","OS","PRIORIDADE",
@@ -45,15 +45,15 @@ STATUS_FINAIS = {"ENTREGUE","CANCELADO","DEVOLVIDO","EXTRAVIADO","RECUSADO"}
 
 # ── Estado global ─────────────────────────────────────────────
 class SyncState:
-    rodando: bool = False
-    inicio:  str  = ""
-    etapa:   str  = ""
-    total:   int  = 0
-    atual:   int  = 0
-    novos:   int  = 0
-    atualizados: int = 0
-    erros:   int  = 0
-    fim:     str  = ""
+    rodando:     bool = False
+    inicio:      str  = ""
+    etapa:       str  = ""
+    total:       int  = 0
+    atual:       int  = 0
+    novos:       int  = 0
+    atualizados: int  = 0
+    erros:       int  = 0
+    fim:         str  = ""
 
 state = SyncState()
 
@@ -72,7 +72,7 @@ def _mapear_base_tpl() -> dict:
     return mapa
 
 
-def _gravar_lote(novas: list, updates: dict, mapa_atual: dict):
+def _gravar_lote(novas: list, updates: dict):
     """Grava novas linhas e updates na planilha imediatamente."""
     if updates:
         todos = sheets.ler_aba("Base TPL")
@@ -120,9 +120,8 @@ def rodar_sync() -> dict:
         log.info(f"[Sync] {len(mapa_atual)} pedidos já na planilha.")
 
         # 4. Processa incremental com gravação por lote
-        state.etapa = "sincronizando Base TPL"
-        auth = tpl.autenticar()
-
+        state.etapa  = "sincronizando Base TPL"
+        auth         = tpl.autenticar()
         novas_lote   = []
         updates_lote = {}
 
@@ -158,17 +157,16 @@ def rodar_sync() -> dict:
             # Grava a cada LOTE_GRAVACAO pedidos
             if (len(novas_lote) + len(updates_lote)) >= LOTE_GRAVACAO:
                 state.etapa = f"gravando lote ({state.atual}/{state.total})"
-                _gravar_lote(novas_lote, updates_lote, mapa_atual)
+                _gravar_lote(novas_lote, updates_lote)
                 novas_lote   = []
                 updates_lote = {}
-                # Reatualiza mapa após gravação
-                mapa_atual = _mapear_base_tpl()
-                state.etapa = "sincronizando Base TPL"
+                mapa_atual   = _mapear_base_tpl()
+                state.etapa  = "sincronizando Base TPL"
 
         # Grava o que sobrou
         if novas_lote or updates_lote:
             state.etapa = "gravando lote final"
-            _gravar_lote(novas_lote, updates_lote, mapa_atual)
+            _gravar_lote(novas_lote, updates_lote)
 
         # 5. Base Omie
         _sync_omie()
@@ -199,13 +197,13 @@ def rodar_sync() -> dict:
         return {"ok": False, "msg": str(e)}
 
 
-# ── Base Omie incremental ────────────────────────────────────
+# ── Base Omie incremental ─────────────────────────────────────
 def _sync_omie():
     state.etapa = "sincronizando Base Omie"
     log.info("[Sync] Base Omie...")
 
-    dados_atual = sheets.ler_aba("Base Omie")
-    ja_tem = set()
+    dados_atual   = sheets.ler_aba("Base Omie")
+    ja_tem        = set()
     COL_CODE_OMIE = 5
     for row in dados_atual[1:]:
         if len(row) > COL_CODE_OMIE:
@@ -223,14 +221,13 @@ def _sync_omie():
             "Autorizado" if ped["etapa"] == "60" else ped["etapa"],
             "API", code
         ])
-        # Grava a cada 100
-        if len(novas) >= 100:
+        if len(novas) >= 50:
             sheets.append_aba("Base Omie", novas)
             novas = []
 
     if novas:
         sheets.append_aba("Base Omie", novas)
-    log.info(f"[Sync] Base Omie concluída.")
+    log.info("[Sync] Base Omie concluída.")
 
 
 # ── Pedidos Site incremental ──────────────────────────────────
@@ -238,8 +235,8 @@ def _sync_site():
     state.etapa = "sincronizando Pedidos Site"
     log.info("[Sync] Pedidos Site...")
 
-    dados_atual = sheets.ler_aba("Pedidos Site")
-    ja_tem = set()
+    dados_atual  = sheets.ler_aba("Pedidos Site")
+    ja_tem       = set()
     COL_NUM_SITE = 1
     for row in dados_atual[1:]:
         if len(row) > COL_NUM_SITE:
@@ -260,8 +257,8 @@ def _sync_site():
         dias = ""
         if ped["data"]:
             try:
-                p = ped["data"].split("/")
-                d = datetime(int(p[2]), int(p[1]), int(p[0]), tzinfo=TZ_SP)
+                p    = ped["data"].split("/")
+                d    = datetime(int(p[2]), int(p[1]), int(p[0]), tzinfo=TZ_SP)
                 dias = (hoje - d).days
             except Exception:
                 pass
@@ -277,14 +274,13 @@ def _sync_site():
         ])
         time.sleep(0.3)
 
-        # Grava a cada 50
-        if len(novas) >= 50:
+        if len(novas) >= 20:
             sheets.append_aba("Pedidos Site", novas)
             novas = []
 
     if novas:
         sheets.append_aba("Pedidos Site", novas)
-    log.info(f"[Sync] Pedidos Site concluído.")
+    log.info("[Sync] Pedidos Site concluído.")
 
 
 # ── Recalcula Status ──────────────────────────────────────────
@@ -298,8 +294,10 @@ def _recalcular_status():
         sit = str(row[COL_SITUAC]).upper().strip() if len(row) > COL_SITUAC else ""
         val = 0.0
         if len(row) > COL_VALOR:
-            try: val = float(str(row[COL_VALOR]).replace(",", "."))
-            except Exception: pass
+            try:
+                val = float(str(row[COL_VALOR]).replace(",", "."))
+            except Exception:
+                pass
         if sit:
             if sit not in mapa:
                 mapa[sit] = {"qtd": 0, "val": 0.0}

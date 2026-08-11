@@ -2,7 +2,7 @@
 sheets.py — acesso à planilha via Google Sheets API
 Usa Service Account (JSON em env var GOOGLE_SA_JSON)
 """
-import os, json, logging
+import os, json, time, logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -44,36 +44,53 @@ def limpar_aba(nome_aba: str):
         range=f"'{nome_aba}'"
     ).execute()
 
-def escrever_aba(nome_aba: str, valores: list, inicio: str = "A1"):
-    """Escreve lista de listas na aba a partir de inicio."""
+def escrever_aba(nome_aba: str, valores: list, inicio: str = "A1", max_retries: int = 3):
+    """Escreve lista de listas na aba a partir de inicio com retry."""
     if not valores:
         return
     svc = _get_service()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{nome_aba}'!{inicio}",
-        valueInputOption="RAW",
-        body={"values": valores}
-    ).execute()
+    for tentativa in range(1, max_retries + 1):
+        try:
+            svc.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"'{nome_aba}'!{inicio}",
+                valueInputOption="RAW",
+                body={"values": valores}
+            ).execute()
+            return
+        except Exception as e:
+            log.warning(f"[Sheets] escrever_aba tentativa {tentativa} falhou: {e}")
+            if tentativa < max_retries:
+                time.sleep(5 * tentativa)
+            else:
+                raise
 
-def append_aba(nome_aba: str, valores: list):
-    """Faz append de linhas no final da aba."""
+def append_aba(nome_aba: str, valores: list, max_retries: int = 3):
+    """Faz append de linhas no final da aba com retry."""
     if not valores:
         return
     svc = _get_service()
-    svc.spreadsheets().values().append(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{nome_aba}'!A1",
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body={"values": valores}
-    ).execute()
+    for tentativa in range(1, max_retries + 1):
+        try:
+            svc.spreadsheets().values().append(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"'{nome_aba}'!A1",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": valores}
+            ).execute()
+            return
+        except Exception as e:
+            log.warning(f"[Sheets] append_aba tentativa {tentativa} falhou: {e}")
+            if tentativa < max_retries:
+                time.sleep(5 * tentativa)
+            else:
+                raise
 
 def garantir_aba(nome_aba: str, cabecalho: list):
     """Garante que a aba existe e tem o cabeçalho correto."""
     svc = _get_service()
 
-    # Verifica se aba existe
     meta = svc.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
     abas = [s["properties"]["title"] for s in meta.get("sheets", [])]
 
@@ -84,7 +101,6 @@ def garantir_aba(nome_aba: str, cabecalho: list):
         ).execute()
         log.info(f"[Sheets] Aba '{nome_aba}' criada.")
 
-    # Verifica cabeçalho
     atual = ler_aba(nome_aba, "A1:ZZ1")
     if not atual or atual[0] != cabecalho:
         escrever_aba(nome_aba, [cabecalho], "A1")
