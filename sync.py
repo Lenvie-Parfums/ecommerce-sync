@@ -2,7 +2,7 @@
 sync.py — motor de sincronização INCREMENTAL
 - Base TPL: update seletivo (preserva colunas manuais), 55 colunas
 - Base Omie: incremental (só novos)
-- Pedidos Site: preenche cols A-G (sem fórmulas)
+- Pedidos Site: via Apps Script (não roda aqui)
 - Status: não toca (fórmulas)
 Estado persistido em disco — retoma se o processo reiniciar.
 """
@@ -38,11 +38,6 @@ CAB_OMIE = [
     "Código de Integração - Pedido"
 ]
 
-CAB_SITE = [
-    "Data do Pedido (Olist)","Nº pedido (Olist)","Nota Fiscal (Omie)",
-    "Cidade (Olist)","Estado (Olist)","Receita (Olist)","Transportadora (Olist)"
-]
-
 # Índices (0-based) que o script ATUALIZA no update seletivo da Base TPL
 # Exclui manuais: 3,7,18,19,22,35,36,49,50,51,52
 COLS_API = [
@@ -58,8 +53,8 @@ COLS_API = [
 
 STATUS_FINAIS = {"ENTREGUE","CANCELADO","DEVOLVIDO","EXTRAVIADO","RECUSADO"}
 
-COL_PEDIDO = CAB_TPL.index("PEDIDO")    # 4
-COL_SITUAC = CAB_TPL.index("SITUACAO")  # 26
+COL_PEDIDO = CAB_TPL.index("PEDIDO")       # 4
+COL_SITUAC = CAB_TPL.index("SITUACAO")     # 26
 COL_TRANSP = CAB_TPL.index("TRANSPORTADORA")  # 13
 
 
@@ -140,9 +135,9 @@ def _mapear_base_tpl() -> dict:
         return {}
     mapa = {}
     for i, row in enumerate(dados[1:], start=1):
-        num   = str(row[COL_PEDIDO]).strip() if len(row) > COL_PEDIDO else ""
-        sit   = str(row[COL_SITUAC]).upper().strip() if len(row) > COL_SITUAC else ""
-        transp= str(row[COL_TRANSP]).strip() if len(row) > COL_TRANSP else ""
+        num    = str(row[COL_PEDIDO]).strip() if len(row) > COL_PEDIDO else ""
+        sit    = str(row[COL_SITUAC]).upper().strip() if len(row) > COL_SITUAC else ""
+        transp = str(row[COL_TRANSP]).strip() if len(row) > COL_TRANSP else ""
         if num:
             mapa[num] = {"linha_idx": i, "status": sit, "transp": transp}
     return mapa
@@ -213,7 +208,6 @@ def _executar() -> dict:
     try:
         if state.fase == "tpl":  _processar_tpl()
         if state.fase == "omie": _sync_omie()
-        if state.fase == "site": _sync_site()
 
         state.fim     = datetime.now(TZ_SP).strftime("%d/%m/%Y %H:%M:%S")
         state.etapa   = "concluído"
@@ -341,72 +335,71 @@ def _sync_omie():
     if novas:
         sheets.append_aba("Base Omie", novas)
 
-    state.fase = "site"
+    state.fase = "done"
     state.salvar()
     log.info("[Sync] Base Omie concluída.")
 
 
-# ── Fase Site ─────────────────────────────────────────────────
-def _sync_site():
-    """
-    Preenche colunas A-G da aba Pedidos Site (sem fórmulas):
-    A(0) Data do Pedido (Olist)
-    B(1) Nº pedido (Olist)
-    C(2) Nota Fiscal (Omie)
-    D(3) Cidade (Olist)       — via Vnda
-    E(4) Estado (Olist)       — via Vnda
-    F(5) Receita (Olist)      — via Vnda
-    G(6) Transportadora       — via Base TPL (TRANSPORTADORA col 13)
-    H em diante: fórmulas — não toca
-    """
-    state.etapa = "sincronizando Pedidos Site"
+# ── Correção Base Omie (endpoint /fix-omie) ───────────────────
+def _corrigir_omie():
+    """Preenche data e NF nas linhas da Base Omie com order code mas valores vazios."""
+    state.rodando = True
+    state.etapa   = "corrigindo Base Omie"
+    state.total   = 0
+    state.atual   = 0
     state.salvar()
-    log.info("[Sync] Pedidos Site...")
+    log.info("[Omie] Iniciando correção de pendências...")
 
-    dados_site = sheets.ler_aba("Pedidos Site")
-    ja_tem     = set()
-    for row in dados_site[1:]:
-        if len(row) > 1 and row[1]:
-            ja_tem.add(str(row[1]).strip())
+    dados = sheets.ler_aba("Base Omie")
+    if len(dados) <= 1:
+        state.rodando = False
+        state.etapa   = "concluído"
+        state.salvar()
+        return
 
-    # Mapa Base TPL: order_code → transportadora (nome, não código)
-    mapa_tpl = _mapear_base_tpl()
+    # Mapeia linhas com order code mas data ou NF vazios
+    pendentes = []
+    for i, row in enumerate(dados[1:], start=1):
+        data_val = str(row[0]).strip() if len(row) > 0 else ""
+        nf_val   = str(row[1]).strip() if len(row) > 1 else ""
+        code     = str(row[5]).strip() if len(row) > 5 else ""
+        if code and code != "N/D" and (not data_val or not nf_val):
+            pendentes.append({"linha": i + 1, "code": code})  # +1 pelo cabeçalho
 
-    pedidos = omie.listar_pedidos("30/07/2026")
-    hoje    = datetime.now(TZ_SP)
-    novas   = []
+    log.info(f"[Omie] {len(pendentes)} linhas com pendência.")
+    state.total = len(pendentes)
+    state.salvar()
 
-    for ped in pedidos:
-        code = ped["order_code"]
-        if not code or code in ja_tem:
+    if not pendentes:
+        state.rodando = False
+        state.etapa   = "concluído — sem pendências"
+        state.salvar()
+        return
+
+    # Busca todos os pedidos do Omie desde o início
+    pedidos_omie = omie.listar_pedidos("22/07/2026")
+    mapa_omie    = {p["order_code"]: p for p in pedidos_omie if p["order_code"]}
+
+    for i, pend in enumerate(pendentes):
+        state.atual = i + 1
+        state.salvar()
+
+        ped = mapa_omie.get(pend["code"])
+        if not ped:
+            log.warning(f"[Omie] {pend['code']} não encontrado no Omie.")
             continue
 
-        time.sleep(0.25)
-        vd = vnda.extrair_dados(code)
-
-        # Transportadora: pega o nome da Base TPL (já processada)
-        # Se não encontrar, usa o nome da Vnda como fallback
-        transp_tpl = mapa_tpl.get(code, {}).get("transp", "")
-        transp     = transp_tpl or vd.get("transp", "")
-
-        novas.append([
-            ped["data"],                    # A Data do Pedido (Olist)
-            code,                           # B Nº pedido (Olist)
-            ped["nf"],                      # C Nota Fiscal (Omie)
-            vd["cidade"],                   # D Cidade (Olist)
-            vd["estado"],                   # E Estado (Olist)
-            vd["receita"],                  # F Receita (Olist)
-            transp,                         # G Transportadora (Olist)
-        ])
+        linha_num = pend["linha"]
+        sheets.escrever_aba(
+            "Base Omie",
+            [[ped["data"], ped["nf"]]],
+            f"A{linha_num}"
+        )
+        log.info(f"[Omie] Linha {linha_num} ({pend['code']}): data={ped['data']} nf={ped['nf']}")
         time.sleep(0.3)
 
-        if len(novas) >= 20:
-            sheets.append_aba("Pedidos Site", novas)
-            novas = []
-
-    if novas:
-        sheets.append_aba("Pedidos Site", novas)
-
-    state.fase = "done"
+    state.rodando = False
+    state.etapa   = "concluído"
+    state.fim     = datetime.now(TZ_SP).strftime("%d/%m/%Y %H:%M:%S")
     state.salvar()
-    log.info("[Sync] Pedidos Site concluído.")
+    log.info("[Omie] Correção Base Omie concluída.")

@@ -1,10 +1,11 @@
 """
 main.py — FastAPI ecommerce-sync
-GET  /health  → liveness
-GET  /status  → progresso atual
-GET  /sync    → dispara sync (retoma se interrompido)
-POST /sync    → idem
+GET  /health        → liveness
+GET  /status        → progresso atual
+GET  /sync          → dispara sync (retoma se interrompido)
+POST /sync          → idem
 GET  /sync?force=true → força reinício do zero
+GET  /fix-omie      → corrige linhas da Base Omie com data/NF vazios
 """
 import os, logging, threading
 from fastapi import FastAPI, HTTPException, Request
@@ -47,7 +48,6 @@ def disparar_sync(request: Request):
 
     force = request.query_params.get("force", "false").lower() == "true"
 
-    # Se já rodando e não é force, verifica se pode retomar
     if sync_engine.state.rodando and not force:
         return JSONResponse({
             "ok": False,
@@ -64,6 +64,19 @@ def disparar_sync(request: Request):
 
     msg = "Sincronização iniciada do zero." if force else "Sincronização iniciada (retoma se interrompida)."
     return {"ok": True, "msg": msg, "acompanhe": "/status"}
+
+
+@app.get("/fix-omie")
+def fix_omie(request: Request):
+    _verificar_token(request)
+    if sync_engine.state.rodando:
+        return {"ok": False, "msg": "Sync rodando. Aguarde."}
+
+    def _rodar():
+        sync_engine._corrigir_omie()
+
+    threading.Thread(target=_rodar, daemon=True).start()
+    return {"ok": True, "msg": "Correção Base Omie iniciada.", "acompanhe": "/status"}
 
 
 @app.on_event("startup")
