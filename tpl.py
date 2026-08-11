@@ -90,19 +90,38 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
     if not o:
         return None
 
+    # info
     inf = o.get("info", {})
     if isinstance(inf, list):
         inf = inf[0] if inf else {}
-    sh  = o.get("shippment",       {})
-    inv = o.get("invoice",         {})
-    ev  = o.get("internalevents",  {})
+
+    # shippment
+    sh = o.get("shippment", {}) or {}
+    if isinstance(sh, list):
+        sh = sh[0] if sh else {}
+
+    # invoice vem como lista
+    _inv = o.get("invoice", [])
+    inv  = _inv[0] if isinstance(_inv, list) and _inv else (_inv or {})
+
+    # internalevents
+    ev = o.get("internalevents", {})
     if isinstance(ev, list):
         ev = ev[0] if ev else {}
-    evs = o.get("shippingevents",  []) or []
+
+    # shippingevents
+    evs = o.get("shippingevents", []) or []
+    if not isinstance(evs, list):
+        evs = []
     ult = evs[-1] if evs else {}
+
+    # wms vem como lista
+    _wms = o.get("wms", [])
+    wms  = _wms[0] if isinstance(_wms, list) and _wms else (_wms or {})
+
+    # deliveryTo
     _dest = o.get("deliveryTo", {})
     dest  = _dest[0] if isinstance(_dest, list) else (_dest or {})
-    wms = o.get("wms",             {}) or {}
 
     dias_ult = ""
     if ult.get("dtshipping"):
@@ -117,30 +136,31 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         str(id_tpl), "NORMAL", "OMIE", "",
         str(order_num or inf.get("number", "")),
         "NAO", "0", "",
-        inv.get("number", ""),  inv.get("value", ""),
-        inv.get("series", ""),  inv.get("key", ""),
+        inv.get("number", ""),   inv.get("value", ""),
+        inv.get("series", ""),   inv.get("key", ""),
         inv.get("emission", ""),
-        sh.get("nick", ""),     sh.get("method", ""),
-        sh.get("vol", ""),      wms.get("weight", ""),
-        sh.get("vol", ""),      "", "",
-        sh.get("trackerurl", ""), sh.get("tracker", ""),
+        sh.get("nick", ""),      sh.get("method", ""),
+        sh.get("vol", ""),       wms.get("weight", ""),
+        sh.get("vol", ""),       "", "",
+        sh.get("trackerUrl") or sh.get("trackerurl", ""),
+        sh.get("tracker", ""),
         "", inf.get("iderp", ""),
-        inf.get("date", ""),    inf.get("prediction", ""),
+        inf.get("date", ""),     inf.get("prediction", ""),
         status_texto(o.get("code")),
         ult.get("message", ""),
         "SIM" if evs else "NAO",
-        f"{ult.get('dtshipping','')} - {ult.get('message','')}" if ult.get("dtshipping") else "",
-        dest.get("name") or dest.get("recipient", ""),
-        dest.get("email", ""),
+        f"{ult.get('dtshipping', '')} - {ult.get('message', '')}" if ult.get("dtshipping") else "",
+        dest.get("to") or dest.get("name") or dest.get("recipient", ""),
+        dest.get("mail") or dest.get("email", ""),
         dest.get("phone") or dest.get("telephone", ""),
         dest.get("zipcode") or dest.get("cep", ""),
         dest.get("state") or dest.get("uf", ""), "", "",
-        ev.get("created", ""),      ev.get("os", ""),
-        ev.get("invoice", ""),      ev.get("startPicking", ""),
-        ev.get("startCheckout", ""),ev.get("dispatched", ""),
-        ev.get("in_transit", ""),   ev.get("fail", ""),
+        ev.get("created", ""),       ev.get("os", ""),
+        ev.get("invoice", ""),       ev.get("startPicking", ""),
+        ev.get("startCheckout", ""), ev.get("dispatched", ""),
+        ev.get("in_transit", ""),    ev.get("fail", ""),
         dias_ult,
         ult.get("dtshipping", ""),
-        ev.get("delivered", ""),    ev.get("cancelled", ""),
+        ev.get("delivered", ""),     ev.get("cancelled", ""),
         ""
     ]
