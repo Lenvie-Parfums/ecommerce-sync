@@ -121,16 +121,27 @@ def detalhe_pedido(id_tpl: int, auth: str) -> dict | None:
 
 def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
     """
-    Monta linha para a Base TPL — 48 colunas alinhadas ao CAB_TPL:
-    ID, TIPO, INTEGRACAO, NATUREZA_DE_OPERACAO, PEDIDO, ANEXO, OS, PRIORIDADE,
-    NF, VALOR_NOTA, SERIE, CHAVE, NF_EMISSAO, TRANSPORTADORA, MODALIDADE,
-    VOL.NF, PESO(G), VOL.OP, CANAL VENDA, MKP NOME, URL, SRO,
-    CODIGO DE ROTA, ID-MKP, PREVISAO ORIGINAL, PREVISAO AJUSTADA,
-    SITUACAO, DETALHE, TEM_OCORRENCIA, ULTIMA_OCORRENCIA_NO_PEDIDO,
-    DEST_NOME, DEST_EMAIL, DEST_FONE, DEST_CEP, UF, REGIAO, GRANDE REGIAO,
-    DH/INC, DH/WMS, DH/NOTA, DH/PICKING, DH/CHECKOUT, DH/DESPACHADO,
-    DH/COLETA, DH/FALHA, DIAS_ULTIMA_MOVIMENTACAO, DH/ULTIMA_MOVIMENTACAO,
-    DH/ENTREGA
+    Monta linha para a Base TPL — 55 colunas alinhadas ao cabeçalho original:
+    0  ID                        | 1  TIPO                    | 2  INTEGRACAO
+    3  NATUREZA_DE_OPERACAO (M)  | 4  PEDIDO                  | 5  ANEXO
+    6  OS                        | 7  PRIORIDADE (M)          | 8  NF
+    9  VALOR_NOTA                | 10 SERIE                   | 11 CHAVE
+    12 NF_EMISSAO                | 13 TRANSPORTADORA          | 14 MODALIDADE
+    15 VOL.NF                    | 16 PESO (G)                | 17 VOL.OP
+    18 CANAL VENDA (M)           | 19 MKP NOME (M)            | 20 URL
+    21 SRO                       | 22 CODIGO DE ROTA (M)      | 23 ID-MKP
+    24 PREVISAO ORIGINAL         | 25 PREVISAO AJUSTADA       | 26 SITUACAO
+    27 DETALHE                   | 28 TEM_OCORRENCIA          | 29 ULTIMA_OCORRENCIA_NO_PEDIDO
+    30 DEST_NOME                 | 31 DEST_EMAIL              | 32 DEST_FONE
+    33 DEST_CEP                  | 34 UF                      | 35 REGIAO (M)
+    36 GRANDE REGIAO (M)         | 37 DH/INC                  | 38 DH/WMS
+    39 DH/NOTA                   | 40 DH/PICKING              | 41 DH/CHECKOUT
+    42 DH/DESPACHADO             | 43 DH/COLETA               | 44 DH/FALHA
+    45 DIAS_ULTIMA_MOVIMENTACAO  | 46 DH/ULTIMA_MOVIMENTACAO  | 47 DH/ENTREGA
+    48 DH/CANCELADO              | 49 POR_QUEM (M)            | 50 MOTIVO (M)
+    51 ADVERTENCIA (M)           | 52 SEM ESTOQUE (M)         | 53 EMBALAGEM
+    54 UNIDADE
+    (M) = manual, script grava "" mas preserva no update seletivo
     """
     o = detalhe_pedido(id_tpl, auth)
     if not o:
@@ -178,7 +189,6 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         except Exception:
             pass
 
-    # Monta lista de exatamente 48 itens — 1 por coluna do CAB_TPL
     return [
         str(id_tpl),                                          # 0  ID
         "NORMAL",                                             # 1  TIPO
@@ -213,7 +223,7 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         dest.get("to") or dest.get("name") or dest.get("recipient", ""),  # 30 DEST_NOME
         dest.get("mail") or dest.get("email", ""),            # 31 DEST_EMAIL
         dest.get("phone") or dest.get("telephone", ""),       # 32 DEST_FONE
-        dest.get("zipcode") or dest.get("cep", ""),           # 33 DEST_CEP
+        str(dest.get("zipcode") or dest.get("cep", "")).zfill(8) if (dest.get("zipcode") or dest.get("cep")) else "",  # 33 DEST_CEP (8 dígitos com zero à esquerda)
         dest.get("state") or dest.get("uf", ""),              # 34 UF
         "",                                                   # 35 REGIAO (manual)
         "",                                                   # 36 GRANDE REGIAO (manual)
@@ -228,4 +238,11 @@ def montar_linha_tpl(id_tpl, order_num, auth) -> list | None:
         dias_ult,                                             # 45 DIAS_ULTIMA_MOVIMENTACAO
         ult.get("dtshipping", ""),                            # 46 DH/ULTIMA_MOVIMENTACAO
         ev.get("delivered", ""),                              # 47 DH/ENTREGA
+        ev.get("cancelled", ""),                              # 48 DH/CANCELADO
+        "",                                                   # 49 POR_QUEM (manual)
+        "",                                                   # 50 MOTIVO (manual)
+        "",                                                   # 51 ADVERTENCIA (manual)
+        "",                                                   # 52 SEM ESTOQUE (manual)
+        wms.get("packaging", "") or wms.get("embalagem", ""),# 53 EMBALAGEM
+        wms.get("unit", "") or wms.get("unidade", ""),       # 54 UNIDADE
     ]
