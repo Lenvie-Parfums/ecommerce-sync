@@ -79,6 +79,19 @@ def fix_omie(request: Request):
     return {"ok": True, "msg": "Correção Base Omie iniciada.", "acompanhe": "/status"}
 
 
+@app.get("/sync-omie")
+def sync_omie(request: Request):
+    _verificar_token(request)
+    if sync_engine.state.rodando:
+        return {"ok": False, "msg": "Sync rodando. Aguarde."}
+
+    def _rodar():
+        sync_engine._reprocessar_omie()
+
+    threading.Thread(target=_rodar, daemon=True).start()
+    return {"ok": True, "msg": "Reprocessamento total da Base Omie iniciado.", "acompanhe": "/status"}
+
+
 @app.on_event("startup")
 def on_startup():
     """Se o processo reiniciou no meio de um sync, retoma automaticamente."""

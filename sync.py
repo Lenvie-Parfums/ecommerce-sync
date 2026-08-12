@@ -403,3 +403,48 @@ def _corrigir_omie():
     state.fim     = datetime.now(TZ_SP).strftime("%d/%m/%Y %H:%M:%S")
     state.salvar()
     log.info("[Omie] Correção Base Omie concluída.")
+
+
+# ── Reprocessar Base Omie inteira (endpoint /sync-omie) ───────
+def _reprocessar_omie():
+    """Limpa e reprocessa a Base Omie inteira do zero, com NF."""
+    state.rodando = True
+    state.etapa   = "reprocessando Base Omie (limpando)"
+    state.total   = 0
+    state.atual   = 0
+    state.salvar()
+    log.info("[Omie] Reprocessamento total iniciado...")
+
+    # Limpa a aba (mantém cabeçalho)
+    sheets.limpar_aba("Base Omie")
+    sheets.escrever_aba("Base Omie", [CAB_OMIE], "A1")
+
+    state.etapa = "buscando pedidos Omie"
+    state.salvar()
+    pedidos = omie.listar_pedidos("30/07/2026")
+    state.total = len(pedidos)
+    state.salvar()
+
+    novas = []
+    for i, ped in enumerate(pedidos):
+        state.atual = i + 1
+        code = ped["order_code"] or "N/D"
+        novas.append([
+            ped["data"], ped["nf"],
+            "Pedido de Venda",
+            "Autorizado" if ped["etapa"] == "60" else ped["etapa"],
+            "Enviado via API", code
+        ])
+        if len(novas) >= 50:
+            sheets.append_aba("Base Omie", novas)
+            novas = []
+            state.salvar()
+
+    if novas:
+        sheets.append_aba("Base Omie", novas)
+
+    state.rodando = False
+    state.etapa   = "concluído"
+    state.fim     = datetime.now(TZ_SP).strftime("%d/%m/%Y %H:%M:%S")
+    state.salvar()
+    log.info(f"[Omie] Reprocessamento concluído: {len(pedidos)} pedidos.")
