@@ -87,7 +87,10 @@ def buscar_nf(codigo_pedido: str) -> str:
         })
         if data.get("faultstring"):
             return ""
-        return str(data.get("ide", {}).get("nNF", ""))
+        
+        num_nf = str(data.get("ide", {}).get("nNF", ""))
+        # Converte para int e depois str para remover zeros à esquerda (ex: 000123 -> 123)
+        return str(int(num_nf)) if num_nf.isdigit() else num_nf
     except Exception as e:
         log.warning(f"[Omie] Erro buscar NF para {codigo_pedido}: {e}")
         return ""
