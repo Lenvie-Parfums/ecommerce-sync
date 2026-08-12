@@ -30,11 +30,6 @@ def _post(url: str, call: str, param: dict, retries: int = 3) -> dict:
     return {}
 
 def listar_pedidos(data_inicio: str) -> list:
-    """
-    Retorna pedidos etapas 60+70 desde data_inicio.
-    Campos: numero, codigo_pedido, order_code, data (data_previsao), etapa, nf, rastreio, transp
-    A NF só existe para pedidos faturados (etapa 70) — buscada via ConsultarNF por pedido.
-    """
     hoje = datetime.now(TZ_SP).strftime("%d/%m/%Y")
     resultados = []
     vistos = set()
@@ -80,40 +75,19 @@ def listar_pedidos(data_inicio: str) -> list:
             pagina += 1
             time.sleep(0.7)
 
-    # Enriquece NF de todos os pedidos (NF existe em etapa 60 ou 70)
-    _enriquecer_nf(resultados)
-
-    log.info(f"[Omie] Total: {len(resultados)} pedidos.")
+    log.info(f"[Omie] Total: {len(resultados)} pedidos na base. NF será buscada sob demanda.")
     return resultados
 
-
-def _enriquecer_nf(pedidos: list):
-    """
-    Para cada pedido (etapa 60 ou 70), busca a NF via ConsultarNF
-    pelo codigo_pedido (nIdPedido). A NF existe independente da etapa.
-    """
-    com_codigo = [p for p in pedidos if p.get("codigo_pedido")]
-    log.info(f"[Omie NF] {len(com_codigo)} pedidos para buscar NF.")
-
-    achadas = 0
-    for i, ped in enumerate(com_codigo):
-        cod_ped = ped["codigo_pedido"]
+def buscar_nf(codigo_pedido: str) -> str:
+    if not codigo_pedido:
+        return ""
+    try:
         data = _post(OMIE_NF_URL, "ConsultarNF", {
-            "nIdPedido": int(cod_ped) if cod_ped.isdigit() else cod_ped
+            "nIdPedido": int(codigo_pedido) if str(codigo_pedido).isdigit() else codigo_pedido
         })
-
         if data.get("faultstring"):
-            # NF ainda não emitida para este pedido — segue
-            continue
-
-        ide    = data.get("ide", {})
-        num_nf = ide.get("nNF", "")
-        if num_nf:
-            ped["nf"] = str(int(num_nf)) if str(num_nf).isdigit() else str(num_nf)
-            achadas += 1
-
-        if (i + 1) % 50 == 0:
-            log.info(f"[Omie NF] {i+1}/{len(com_codigo)} processados, {achadas} NFs achadas.")
-        time.sleep(0.4)
-
-    log.info(f"[Omie NF] Concluído: {achadas} NFs encontradas de {len(com_codigo)} pedidos.")
+            return ""
+        return str(data.get("ide", {}).get("nNF", ""))
+    except Exception as e:
+        log.warning(f"[Omie] Erro buscar NF para {codigo_pedido}: {e}")
+        return ""

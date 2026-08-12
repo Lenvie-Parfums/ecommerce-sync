@@ -322,8 +322,9 @@ def _sync_omie():
         code = ped["order_code"] or "N/D"
         if code in ja_tem:
             continue
+        nf = omie.buscar_nf(ped["codigo_pedido"])
         novas.append([
-            ped["data"], ped["nf"],
+            ped["data"], nf,
             "Pedido de Venda",
             "Autorizado" if ped["etapa"] == "60" else ped["etapa"],
             "Enviado via API", code
@@ -390,12 +391,13 @@ def _corrigir_omie():
             continue
 
         linha_num = pend["linha"]
+        nf = omie.buscar_nf(ped["codigo_pedido"])
         sheets.escrever_aba(
             "Base Omie",
-            [[ped["data"], ped["nf"]]],
+            [[ped["data"], nf]],
             f"A{linha_num}"
         )
-        log.info(f"[Omie] Linha {linha_num} ({pend['code']}): data={ped['data']} nf={ped['nf']}")
+        log.info(f"[Omie] Linha {linha_num} ({pend['code']}): data={ped['data']} nf={nf}")
         time.sleep(0.3)
 
     state.rodando = False
@@ -429,8 +431,9 @@ def _reprocessar_omie():
     for i, ped in enumerate(pedidos):
         state.atual = i + 1
         code = ped["order_code"] or "N/D"
+        nf = omie.buscar_nf(ped["codigo_pedido"])
         novas.append([
-            ped["data"], ped["nf"],
+            ped["data"], nf,
             "Pedido de Venda",
             "Autorizado" if ped["etapa"] == "60" else ped["etapa"],
             "Enviado via API", code
