@@ -80,38 +80,40 @@ def listar_pedidos(data_inicio: str) -> list:
             pagina += 1
             time.sleep(0.7)
 
-    # Enriquece NF só dos pedidos faturados (etapa 70)
-    _enriquecer_nf_faturados(resultados)
+    # Enriquece NF de todos os pedidos (NF existe em etapa 60 ou 70)
+    _enriquecer_nf(resultados)
 
     log.info(f"[Omie] Total: {len(resultados)} pedidos.")
     return resultados
 
 
-def _enriquecer_nf_faturados(pedidos: list):
+def _enriquecer_nf(pedidos: list):
     """
-    Para cada pedido em etapa 70 (faturado), busca a NF via ConsultarNF
-    pelo codigo_pedido. Pedidos em etapa 60 não têm NF ainda.
+    Para cada pedido (etapa 60 ou 70), busca a NF via ConsultarNF
+    pelo codigo_pedido (nIdPedido). A NF existe independente da etapa.
     """
-    faturados = [p for p in pedidos if p.get("etapa") == "70" and p.get("codigo_pedido")]
-    log.info(f"[Omie NF] {len(faturados)} pedidos faturados para buscar NF.")
+    com_codigo = [p for p in pedidos if p.get("codigo_pedido")]
+    log.info(f"[Omie NF] {len(com_codigo)} pedidos para buscar NF.")
 
-    for i, ped in enumerate(faturados):
+    achadas = 0
+    for i, ped in enumerate(com_codigo):
         cod_ped = ped["codigo_pedido"]
         data = _post(OMIE_NF_URL, "ConsultarNF", {
             "nIdPedido": int(cod_ped) if cod_ped.isdigit() else cod_ped
         })
 
         if data.get("faultstring"):
-            # NF ainda não emitida ou não encontrada — segue
+            # NF ainda não emitida para este pedido — segue
             continue
 
         ide    = data.get("ide", {})
         num_nf = ide.get("nNF", "")
         if num_nf:
             ped["nf"] = str(int(num_nf)) if str(num_nf).isdigit() else str(num_nf)
+            achadas += 1
 
-        if (i + 1) % 20 == 0:
-            log.info(f"[Omie NF] {i+1}/{len(faturados)} processados.")
-        time.sleep(0.5)
+        if (i + 1) % 50 == 0:
+            log.info(f"[Omie NF] {i+1}/{len(com_codigo)} processados, {achadas} NFs achadas.")
+        time.sleep(0.4)
 
-    log.info(f"[Omie NF] Enriquecimento de NF concluído.")
+    log.info(f"[Omie NF] Concluído: {achadas} NFs encontradas de {len(com_codigo)} pedidos.")
