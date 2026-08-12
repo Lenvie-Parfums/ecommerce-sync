@@ -6,6 +6,7 @@ GET  /sync          → dispara sync (retoma se interrompido)
 POST /sync          → idem
 GET  /sync?force=true → força reinício do zero
 GET  /fix-omie      → corrige linhas da Base Omie com data/NF vazios
+GET  /sync-omie     → reprocessa Base Omie inteira do zero
 """
 import os, logging, threading
 from fastapi import FastAPI, HTTPException, Request
@@ -28,12 +29,12 @@ def _verificar_token(request: Request):
         return
     token = request.headers.get("x-sync-token") or request.query_params.get("token")
     if token != SYNC_TOKEN:
-        raise HTTPException(status_code=401, detail="Token inválido.")
+        raise HTTPException(status_code=401, detail="Token invalido.")
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "ecommerce-sync"}
+    return {"ok": True}
 
 
 @app.get("/status")
@@ -45,57 +46,42 @@ def status():
 @app.post("/sync")
 def disparar_sync(request: Request):
     _verificar_token(request)
-
     force = request.query_params.get("force", "false").lower() == "true"
 
     if sync_engine.state.rodando and not force:
-        return JSONResponse({
-            "ok": False,
-            "msg": "Já está rodando.",
-            "status": sync_engine.state.to_dict()
-        })
+        return {"ok": False, "msg": "ja rodando"}
 
     def _rodar():
         result = sync_engine.rodar_sync(force=force)
         log.info(f"[Sync] Resultado: {result}")
 
-    t = threading.Thread(target=_rodar, daemon=True)
-    t.start()
-
-    msg = "Sincronização iniciada do zero." if force else "Sincronização iniciada (retoma se interrompida)."
-    return {"ok": True, "msg": msg, "acompanhe": "/status"}
+    threading.Thread(target=_rodar, daemon=True).start()
+    return {"ok": True}
 
 
 @app.get("/fix-omie")
 def fix_omie(request: Request):
     _verificar_token(request)
     if sync_engine.state.rodando:
-        return {"ok": False, "msg": "Sync rodando. Aguarde."}
+        return {"ok": False, "msg": "sync rodando"}
 
-    def _rodar():
-        sync_engine._corrigir_omie()
-
-    threading.Thread(target=_rodar, daemon=True).start()
-    return {"ok": True, "msg": "Correção Base Omie iniciada.", "acompanhe": "/status"}
+    threading.Thread(target=sync_engine._corrigir_omie, daemon=True).start()
+    return {"ok": True}
 
 
 @app.get("/sync-omie")
 def sync_omie(request: Request):
     _verificar_token(request)
     if sync_engine.state.rodando:
-        return {"ok": False, "msg": "Sync rodando. Aguarde."}
+        return {"ok": False, "msg": "sync rodando"}
 
-    def _rodar():
-        sync_engine._reprocessar_omie()
-
-    threading.Thread(target=_rodar, daemon=True).start()
-    return {"ok": True, "msg": "Reprocessamento total da Base Omie iniciado.", "acompanhe": "/status"}
+    threading.Thread(target=sync_engine._reprocessar_omie, daemon=True).start()
+    return {"ok": True}
 
 
 @app.on_event("startup")
 def on_startup():
     """Se o processo reiniciou no meio de um sync, retoma automaticamente."""
     if sync_engine.state.rodando and sync_engine.state.fase not in ("", "done"):
-        log.info("[Startup] Sync interrompido detectado — retomando automaticamente...")
-        t = threading.Thread(target=sync_engine.rodar_sync, daemon=True)
-        t.start()
+        log.info("[Startup] Retomando sync interrompido...")
+        threading.Thread(target=sync_engine.rodar_sync, daemon=True).start()
